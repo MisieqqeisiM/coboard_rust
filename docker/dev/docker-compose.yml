@@ -1,0 +1,32 @@
+version: '3'
+services:
+  frontend:
+    tty: true
+    build: 
+      context: ../..
+      dockerfile: ./docker/dev/Dockerfile.frontend
+    volumes:
+      - ../../common/src:/usr/src/common/src
+      - ../../frontend/src:/usr/src/app/src
+      - ../../frontend/index.html:/usr/src/app/index.html
+      - ../../frontend/assets:/usr/src/app/assets
+      - /usr/src/app/target
+      - /usr/src/common/target
+      - /usr/src/app/dist
+  backend:
+    tty: true
+    build: 
+      context: ../..
+      dockerfile: ./docker/dev/Dockerfile.backend
+    volumes:
+      - ../../common/src:/usr/src/common/src
+      - ../../backend/src:/usr/src/app/src
+      - /usr/src/app/target
+      - /usr/src/common/target
+  nginx:
+    tty: true
+    image: nginx:1.25.5
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - 80:80

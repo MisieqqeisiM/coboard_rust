@@ -1,0 +1,38 @@
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+.cursor {
+  position: absolute;
+  pointer-events: none;
+  left: -49px;
+  top: -29px;
+  width: 100px;
+  user-select: none;
+  transition: transform 200ms;
+}
+
+.cursor > .image {
+  position: absolute;
+  left: 43px;
+  width: 30px;
+  height: 30px;
+  display: inline-block;
+}
+
+.cursor > .label {
+  position: relative;
+  width: 100%;
+  top: 30px;
+  text-align: center;
+  word-wrap: break-word;
+  display: inline-block;
+  color: #333;
+}

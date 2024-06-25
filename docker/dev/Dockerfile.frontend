@@ -1,0 +1,8 @@
+FROM rust:1.79
+RUN rustup target add wasm32-unknown-unknown
+RUN cargo install trunk
+
+COPY ./frontend /usr/src/app
+COPY ./common /usr/src/common
+WORKDIR /usr/src/app
+CMD ["trunk", "serve", "--address", "0.0.0.0", "--port", "8080"]
