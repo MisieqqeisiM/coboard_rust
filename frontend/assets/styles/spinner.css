@@ -1,0 +1,40 @@
+.spinner {
+    animation-name: spin;
+    animation-duration: 2000ms;
+    animation-iteration-count: infinite;
+    animation-timing-function: linear; 
+
+    display: block;
+    width: 250px;
+    height: 250px;
+}
+
+@keyframes spin {
+    from {
+        transform:rotate(0deg);
+    }
+    to {
+        transform:rotate(-360deg);
+    }
+}
+
+.loading-screen-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.loading-element {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.loading-text {
+    text-align: center;
+    font-family: Raleway;
+    padding: 10px;
+    font-weight: light;
+    font-size: 32px;
+}

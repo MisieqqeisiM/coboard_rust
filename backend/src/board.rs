@@ -1,19 +1,27 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, pin::Pin};
 
 use common::{entities::Position, websocket::{ToClient, ToServer}};
+use futures_util::Future;
+use tracing::info;
 
 use crate::socket_endpoint::{Client, SocketHandler};
 
+type AsyncFnOnce = Box<dyn (FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send>>) + Send>;
+
 pub struct Board {
   clients: HashMap<u64, Client>,
+
   positions: HashMap<u64, Position>,
+  delete: Option<AsyncFnOnce>,
 }
 
 impl Board {
-  pub fn new() -> Self{
+  pub fn new<Fu>(delete: impl (FnOnce() -> Fu) + Send + 'static) -> Self
+  where Fu: Future<Output=()> + Send + 'static {
     Self {
       clients: HashMap::new(),
       positions: HashMap::new(),
+      delete: Some(Box::new(move || Box::pin(delete())))
     }
   }
 
@@ -49,5 +57,13 @@ impl SocketHandler for Board {
     self.clients.remove(&client_id);
     self.positions.remove(&client_id);
     self.broadcast(ToClient::ClientDisconnected { id: client_id } ).await;
+  }
+  
+  async fn tick(&mut self) {
+    if self.clients.len() == 0 {
+      if let Some(f) = self.delete.take() {
+        f().await;
+      }
+    }
   }
 }

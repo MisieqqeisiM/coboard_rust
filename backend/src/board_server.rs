@@ -1,13 +1,15 @@
 use std::{collections::HashMap, sync::Arc};
 
-use axum::{extract::{Path, State, WebSocketUpgrade}, http::StatusCode, response::{IntoResponse, Response}, routing::get, Router};
+use axum::{extract::{Path, Query, State, WebSocketUpgrade}, http::StatusCode, response::{IntoResponse, Response}, routing::{get, post}, Router};
+use serde::Deserialize;
 use tokio::sync::Mutex;
 use tracing::info;
-use uuid::Uuid;
 
 use crate::{board::Board, socket_endpoint::SocketEndpoint};
 
-async fn ws(ws: WebSocketUpgrade, Path(socket_id): Path<Uuid>, State(state): State<Arc<Mutex<ServerState>>>) -> Response{
+const MAIN_SERVER_URL: &'static str = "http://localhost:8080/internal";
+
+async fn ws(ws: WebSocketUpgrade, Path(socket_id): Path<String>, State(state): State<Arc<Mutex<ServerState>>>) -> Response{
   let state = state.lock().await;
   match state.endpoints.get(&socket_id) {
     Some(endpoint) => endpoint.handler(ws),
@@ -15,24 +17,39 @@ async fn ws(ws: WebSocketUpgrade, Path(socket_id): Path<Uuid>, State(state): Sta
   }
 } 
 
-async fn create_board(State(state): State<Arc<Mutex<ServerState>>>) -> Response {
+async fn delete_board(state: Arc<Mutex<ServerState>>, name: String) {
+  let client = reqwest::Client::new();
+  client.delete(format!("{MAIN_SERVER_URL}/delete_board"))
+    .query(&[("name", &name)])
+    .send().await.unwrap();
   let mut state = state.lock().await; 
-  let uuid = Uuid::new_v4();
-  info!("{}", uuid);
-  state.endpoints.insert(uuid, SocketEndpoint::new(Board::new()));
-  format!("/boards/{}", uuid.to_string()).into_response()
+  state.endpoints.remove(&name);
+  info!("Board unloaded: {name}");
+}
+
+#[derive(Deserialize)]
+struct CreateBoardPars {
+  name: String
+}
+
+async fn create_board(Query(CreateBoardPars { name }): Query<CreateBoardPars>, State(state_arc): State<Arc<Mutex<ServerState>>>) -> Response {
+  let mut state = state_arc.lock().await; 
+  let state_arc = state_arc.clone();
+  let name_clone = name.clone();
+  state.endpoints.insert(name.clone(), SocketEndpoint::new(Board::new(move || delete_board(state_arc, name_clone))));
+  info!("Board loaded: {name}");
+  format!("/boards/{name}").into_response()
 }
 
 struct ServerState {
-  endpoints: HashMap<Uuid, SocketEndpoint>,
+  endpoints: HashMap<String, SocketEndpoint>,
 }
 
 pub fn board_server() -> Router {
-  let mut state = ServerState {
+  let state = ServerState {
     endpoints: HashMap::new(),
   };
-  state.endpoints.insert(Uuid::new_v4(), SocketEndpoint::new(Board::new()));
   Router::new().route("/boards/:socket_id", get(ws))
-    .route("/create_board", get(create_board))
+    .route("/create_board", post(create_board))
     .with_state(Arc::new(Mutex::new(state)))
 }
