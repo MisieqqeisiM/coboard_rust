@@ -1,63 +1,51 @@
 mod socket_endpoint;
+mod board_server;
+mod board;
 
-use std::collections::HashMap;
-use axum::Router;
-use common::{entities::Position, websocket::{ToClient, ToServer}};
-use socket_endpoint::{socket_endpoint, Client, SocketHandler};
-use tokio::net::TcpListener;
+use std::{collections::HashMap, sync::Arc};
 
-struct Handler {
-    clients: HashMap<u64, Client>,
-    positions: HashMap<u64, Position>,
+use axum::{extract::{Query, State}, response::{IntoResponse, Response}, routing::get, Router};
+use axum_macros::debug_handler;
+use board_server::board_server;
+use serde::Deserialize;
+use tokio::{net::TcpListener, sync::Mutex};
+
+const INNER_BOARD_SERVER_URL: &'static str = "http://localhost:8080/board_server";
+const OUTER_BOARD_SERVER_URL: &'static str = "/api/board_server";
+
+#[derive(Deserialize)]
+struct BoardUrlPars {
+    name: String,
 }
 
-impl Handler {
-    fn new() -> Self{
-        Self {
-            clients: HashMap::new(),
-            positions: HashMap::new(),
-        }
-    }
-
-    async fn broadcast(&mut self, message: ToClient) {
-        for client in self.clients.values_mut() {
-            client.send(message.clone()).await;
+#[debug_handler]
+async fn board_url(Query(BoardUrlPars {name}): Query<BoardUrlPars>, State(state): State<Arc<Mutex<AppState>>>) -> Response {
+    let mut state = state.lock().await;
+    match state.board_urls.get(&name) {
+        Some(url) => url.to_owned().into_response(),
+        None => {
+            let path = reqwest::get(format!("{}/create_board", INNER_BOARD_SERVER_URL)).await.unwrap().text().await.unwrap();
+            let path = format!("{}{}", OUTER_BOARD_SERVER_URL, path);
+            state.board_urls.insert(name, path.clone());
+            path.into_response()
         }
     }
 }
 
-impl SocketHandler for Handler {
-    async fn on_connect(&mut self, mut client: Client) {
-        let id = client.id;
-        client.send(ToClient::ClientList { 
-            clients: self.positions.iter()
-                .map(|(id, pos)| (id.to_owned(), pos.to_owned()))
-                .collect()
-        }).await;
-        self.clients.insert(id, client);
-        self.broadcast(ToClient::NewClient { id }).await;
-    }
-
-    async fn on_message(&mut self, client_id: u64, message: ToServer) {
-        match message {
-            ToServer::Move { x, y } => {
-                self.positions.insert(client_id, Position { x, y } );
-                self.broadcast(ToClient::ClientMoved { id: client_id, x, y } ).await;
-            }
-        };
-    }
-    
-    async fn on_disconnect(&mut self, client_id: u64) {
-        self.clients.remove(&client_id);
-        self.positions.remove(&client_id);
-        self.broadcast(ToClient::ClientDisconnected { id: client_id } ).await;
-    }
+struct AppState {
+    board_urls: HashMap<String, String>,
 }
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt().init();
-    let app = Router::new().nest("/ws", socket_endpoint(Handler::new()));
+    let state = AppState {
+        board_urls: HashMap::new(),
+    };
+    let app = Router::new()
+        .route("/board_url", get(board_url))
+        .with_state(Arc::new(Mutex::new(state)))
+        .nest("/board_server", board_server());
     let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
     tracing::info!("starting server");
     axum::serve(listener, app).await.unwrap();

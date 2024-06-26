@@ -1,43 +1,20 @@
-use axum::{extract::{ws::{Message, WebSocket}, State, WebSocketUpgrade}, response::Response, routing::get, Router};
+use axum::{extract::{ws::{Message, WebSocket}, WebSocketUpgrade}, response::Response};
 use common::websocket::{ToClient, ToServer};
 use futures_util::{stream::SplitSink, SinkExt, StreamExt};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-
-async fn handler(ws: WebSocketUpgrade, State(app): State<AppState>) -> Response {
-  ws.on_upgrade(move|socket| on_upgrade(socket, app))
-}
-
-async fn on_upgrade(socket: WebSocket, app: AppState) {
-  let id = rand::random::<u64>();
-  let (to_client, mut from_client) = socket.split();
-  let client = Client { id, socket: to_client };
-  app.message_queue.send(ServerMessage::NewClient(client)).unwrap();
-  while let Some(Ok(message)) = from_client.next().await {
-    if let Message::Binary(message) = message {
-      let Ok(message) = serde_cbor::from_slice(&message) else { break; };
-      app.message_queue.send(ServerMessage::Message { client_id: id, message }).unwrap();
-    } else if let Message::Close(_) = message {
-      break;
-    }
-  }
-  app.message_queue.send(ServerMessage::Disconnect {client_id: id}).unwrap();
-
-}
-
-enum ServerMessage {
-  NewClient(Client),
-  Message {client_id: u64, message: ToServer },
-  Disconnect {client_id: u64},
-}
+use tokio::{select, sync::{broadcast, mpsc::{self, unbounded_channel, UnboundedReceiver}}};
 
 pub struct Client {
-  pub id: u64,
+  id: u64,
   socket: SplitSink<WebSocket, Message>
 }
 
 impl Client {
+  pub fn get_id(&self) -> u64 {
+    self.id
+  }
+
   pub async fn send(&mut self, message: ToClient) {
-    self.socket.send(Message::Binary(serde_cbor::to_vec(&message).unwrap())).await.unwrap(); 
+    let _ = self.socket.send(Message::Binary(serde_cbor::to_vec(&message).unwrap())).await;
   }
 }
 
@@ -47,9 +24,67 @@ pub trait SocketHandler {
   fn on_disconnect(&mut self, client_id: u64) -> impl std::future::Future<Output = ()> + std::marker::Send;
 }
 
-#[derive(Clone)]
-struct AppState {
-  message_queue: UnboundedSender<ServerMessage>
+pub struct SocketEndpoint {
+  message_sender: mpsc::UnboundedSender<ServerMessage>,
+  kill_sender: broadcast::Sender<()>
+}
+
+impl SocketEndpoint {
+  pub fn new(socket_handler: impl SocketHandler + Send + 'static) -> Self  {
+    let (message_sender, message_receiver) = unbounded_channel();
+    let (kill_sender, _) = broadcast::channel(1);
+    let state = SocketEndpoint {
+      message_sender, kill_sender,
+    };
+    tokio::spawn(pass_messages(message_receiver, socket_handler));
+    state
+  }
+
+  pub fn handler(&self, ws: WebSocketUpgrade) -> Response {
+    let message_sender = self.message_sender.clone();
+    let kill_receiver = self.kill_sender.subscribe();
+    ws.on_upgrade(move |socket| on_upgrade(socket, message_sender, kill_receiver))
+  }
+}
+
+impl Drop for SocketEndpoint {
+  fn drop(&mut self) {
+    self.kill_sender.send(()).unwrap();
+  }
+}
+
+enum ServerMessage {
+  NewClient(Client),
+  Message {client_id: u64, message: ToServer },
+  Disconnect {client_id: u64},
+}
+
+async fn on_upgrade(socket: WebSocket, message_sender: mpsc::UnboundedSender<ServerMessage>, mut kill_receiver: broadcast::Receiver<()>) {
+  let id = rand::random::<u64>();
+  let (to_client, mut from_client) = socket.split();
+  let client = Client { id, socket: to_client };
+  message_sender.send(ServerMessage::NewClient(client)).unwrap();
+  loop {
+    select! {
+      Some(Ok(message)) = from_client.next() => {
+        match message {
+          Message::Binary(message) => {
+            let Ok(message) = serde_cbor::from_slice(&message) else { break; };
+            message_sender.send(ServerMessage::Message { client_id: id, message }).unwrap();
+          },
+          Message::Close(_) => break,
+          _ => continue
+        }
+      },
+      _ = kill_receiver.recv() => {
+        break;
+      },
+      else => {
+        break;
+      }
+    }
+  }
+  message_sender.send(ServerMessage::Disconnect {client_id: id}).unwrap();
 }
 
 async fn pass_messages(
@@ -64,13 +99,4 @@ async fn pass_messages(
       ServerMessage::Disconnect { client_id } => socket_handler.on_disconnect(client_id).await,
     };
   }
-}
-
-pub fn socket_endpoint(socket_handler: impl SocketHandler + Send + 'static) -> Router {
-  let (sender, receiver) = unbounded_channel();
-  let state = AppState {
-    message_queue: sender,
-  };
-  tokio::spawn(pass_messages(receiver, socket_handler));
-  Router::new().route("/", get(handler)).with_state(state)
 }

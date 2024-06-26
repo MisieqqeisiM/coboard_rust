@@ -19,7 +19,6 @@ fn Cursor(name: String, position: Signal<Position>) -> impl IntoView {
     let y = move || position.get().y;
     view! {
         <div class="cursor" style=move || { format!("transform: translate({}px, {}px)", x(), y()) }>
-
             <img class="image" src="/assets/img/pencil.svg" width="30" height="30"/>
             <div class="label">
                 <p>{name}</p>
@@ -38,15 +37,15 @@ fn App() -> impl IntoView {
         set_y.set(e.client_y());
     });
 
-    let UseClientReturn {
-        message,
-        send_message,
-    } = use_client();
+    let client = create_local_resource(|| (), |_| Client::new());
 
     let (clients, set_clients) = create_signal(HashMap::<u64, Position>::new());
 
     create_effect(move |_| {
-        let Some(message) = message.get() else {
+        let Some(Some(client)) = client.get() else {
+            return;
+        };
+        let Some(message) = client.message() else {
             return;
         };
         log!("{:?}", message);
@@ -78,10 +77,13 @@ fn App() -> impl IntoView {
     let UseIntervalReturn { counter, .. } = use_interval(50);
 
     create_effect(move |_| {
+        let Some(Some(client)) = client.get() else {
+            return;
+        };
         let _ = counter.get();
         let x = x.get_untracked();
         let y = y.get_untracked();
-        send_message(ToServer::Move {
+        client.send(ToServer::Move {
             x: x as f32,
             y: y as f32,
         });
