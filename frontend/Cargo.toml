@@ -6,11 +6,12 @@ edition = "2021"
 [dependencies]
 common = { path = "../common" }
 console_error_panic_hook = "0.1.7"
+itertools = "0.13.0"
 leptos = { version = "0.6.12", features = ["csr"] }
 leptos-use = "0.10.10"
+nalgebra = "0.33.0"
 reqwest = "0.12.5"
 serde = "1.0.203"
 serde_cbor = "0.11.2"
 wasm-bindgen-futures = "0.4.42"
-web-sys = "0.3.69"
-
+web-sys = { version = "0.3.69", features = [ "WebGl2RenderingContext", "HtmlCanvasElement", "WebGlBuffer", "WebGlVertexArrayObject", "WebGlProgram", "WebGlShader" ] }

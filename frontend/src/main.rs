@@ -1,8 +1,11 @@
 #![allow(non_snake_case)]
+mod canvas;
 mod client;
+mod line_drawing;
 
 use std::collections::HashMap;
 
+use canvas::Canvas;
 use client::*;
 use common::{
     entities::Position,
@@ -144,8 +147,9 @@ fn App() -> impl IntoView {
     view! {
         {move || {
             match client.get() {
-                Some(_) => {
+                Some(client) => {
                     view! {
+                        <Canvas client=client/>
                         <For
                             each=move || clients.get()
                             key=move |(id, _)| id.clone()
@@ -157,8 +161,11 @@ fn App() -> impl IntoView {
                             }
                         />
                     }
+                        .into()
                 }
-                None => view! { <LoadingSpinner text="Connecting..."/> },
+                None => {
+                    view! { <LoadingSpinner text="Connecting..."/> }
+                }
             }
         }}
     }
