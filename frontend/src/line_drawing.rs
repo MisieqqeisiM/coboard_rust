@@ -7,21 +7,21 @@ use nalgebra::{ComplexField, Matrix2, Point2, Rotation, Rotation2, Vector2};
 type Point = Point2<f64>;
 type Vector = Vector2<f64>;
 
-pub fn line_into_triangles(line: Vec<Point>, width: f64) -> Vec<Point> {
+pub fn line_into_triangle_strip(line: Vec<Point>, width: f64) -> Vec<Point> {
     if let [a] = line[..] {
         circle(a, width)
     } else {
-        line.iter()
-            .tuple_windows()
-            .flat_map(|(a, b)| rectangle(a.to_owned(), b.to_owned(), width))
-            .chain(
-                line.iter()
-                    .tuple_windows()
-                    .flat_map(|(a, b, c)| elbow(a.to_owned(), b.to_owned(), c.to_owned(), width)),
-            )
-            .chain(cap(line[0], line[1], width))
-            .chain(cap(line[line.len() - 1], line[line.len() - 2], width))
-            .collect()
+        let mut result = vec![cap(line[0], line[1], width)];
+
+        for i in 0..(line.len() - 1) {
+            result.push(rectangle(line[i], line[i + 1], width));
+            if i + 2 < line.len() {
+                result.push(elbow(line[i], line[i + 1], line[i + 2], width));
+            }
+        }    
+        result.push(cap(line[line.len() - 1], line[line.len() - 2], width));
+        
+        result.into_iter().flat_map(|v| v).collect()
     }
 }
 
@@ -34,7 +34,7 @@ fn rectangle(from: Point, to: Point, width: f64) -> Vec<Point> {
     let p3 = to + perp * width;
     let p4 = to - perp * width;
 
-    vec![p1, p2, p3, p3, p2, p4]
+    vec![p1, p2, p3, p4]
 }
 
 const ANGLE_RES: f64 = 0.3;
@@ -53,18 +53,15 @@ fn cap(from: Point, to: Point, width: f64) -> Vec<Point> {
 fn circle(a: Point, width: f64) -> Vec<Point> {
     let segment_count: u32 = (TAU / ANGLE_RES).ceil() as u32;
     let start = a + Vector2::new(width, 0.0);
-    let mut points = vec![start];
+    let mut points = vec![start, a];
     let rotation = Rotation2::new(TAU / segment_count as f64);
     for _ in 0..segment_count {
-        let prev = points.last().unwrap();
+        let prev = points[points.len() - 1];
         points.push(a + rotation * (prev - a));
+        points.push(a);
     }
     points.push(start);
     points
-        .into_iter()
-        .tuple_windows()
-        .flat_map(|(x, y)| [x, y, a])
-        .collect()
 }
 
 
@@ -76,17 +73,14 @@ fn arc(a: Point, b: Point, c: Point) -> Vec<Point> {
     }
     let segment_count = (angle / ANGLE_RES).ceil() as u32;
     let rotation = Rotation2::new(angle / segment_count as f64);
-    let mut points = vec![a];
+    let mut points = vec![a, b];
     for _ in 0..(segment_count - 1) {
-        let prev = points.last().unwrap();
+        let prev = points[points.len() - 2];
         points.push(b + rotation * (prev - b));
+        points.push(b);
     }
     points.push(c);
     points
-        .into_iter()
-        .tuple_windows()
-        .flat_map(|(x, y)| [x, y, b])
-        .collect()
 }
 
 /// Given line a -- b -- c constructs a rounded outer corner at point b

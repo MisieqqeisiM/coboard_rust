@@ -5,7 +5,7 @@ use leptos::{component, create_effect, create_node_ref, logging::log, view, Into
 use nalgebra::Point2;
 use web_sys::{js_sys, wasm_bindgen::JsCast, WebGl2RenderingContext, WebGlProgram, WebGlShader};
 
-use crate::{line_drawing::line_into_triangles, Client};
+use crate::{line_drawing::line_into_triangle_strip, Client};
 
 #[component]
 pub fn Canvas(client: Client) -> impl IntoView {
@@ -27,15 +27,17 @@ pub fn Canvas(client: Client) -> impl IntoView {
         context.viewport(0, 0, canvas.width() as i32, canvas.height() as i32);
         context.clear_color(0.7, 0.7, 0.7, 1.0);
         context.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
-        let vertices = line_into_triangles(
+        let vertices = line_into_triangle_strip(
             vec![
                 Point2::new(0.0, 0.0),
                 Point2::new(100.0, 0.0),
                 Point2::new(0.0, 100.0),
                 Point2::new(-100.0, 50.0),
                 Point2::new(-110.0, 70.0),
+                Point2::new(-150.0, 40.0),
+                Point2::new(-50.0, -20.0)
             ],
-            30.0,
+            10.0,
         )
         .into_iter()
         .flat_map(|p| [p.x as f32, p.y as f32])
@@ -66,7 +68,7 @@ pub fn Canvas(client: Client) -> impl IntoView {
         );
         context.enable_vertex_attrib_array(position_attribute_location as u32);
         let vert_count = (vertices.len() / 2) as i32;
-        context.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vert_count);
+        context.draw_arrays(WebGl2RenderingContext::TRIANGLE_STRIP, 0, vert_count);
     });
     view! { <canvas _ref=canvas width=500 height=500></canvas> }
 }
