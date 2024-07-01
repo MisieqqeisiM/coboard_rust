@@ -1,12 +1,17 @@
 #![allow(non_snake_case)]
-mod canvas;
+mod board;
 mod client;
 mod line_drawing;
+mod webgl_utils;
 
 use std::collections::HashMap;
 
-use canvas::Canvas;
+use board::controls::Controls;
+use board::cursor::Cursor;
+use board::cursor_box::CursorBox;
+use board::{camera::Camera, canvas::Canvas};
 use client::*;
+use common::entities::Line;
 use common::{
     entities::Position,
     websocket::{ToClient, ToServer},
@@ -14,21 +19,6 @@ use common::{
 use ev::mousemove;
 use leptos::*;
 use leptos_use::*;
-use logging::log;
-
-#[component]
-fn Cursor(name: String, position: Signal<Position>) -> impl IntoView {
-    let x = move || position.get().x;
-    let y = move || position.get().y;
-    view! {
-        <div class="cursor" style=move || { format!("transform: translate({}px, {}px)", x(), y()) }>
-            <img class="image" src="/assets/img/pencil.svg" width="30" height="30"/>
-            <div class="label">
-                <p>{name}</p>
-            </div>
-        </div>
-    }
-}
 
 #[component]
 fn LoadingSpinner(text: &'static str) -> impl IntoView {
@@ -49,7 +39,7 @@ fn App() -> impl IntoView {
     let (x, set_x) = create_signal(0);
     let (y, set_y) = create_signal(0);
 
-    let _ = use_event_listener(use_document(), mousemove, move |e| {
+    let _ = use_event_listener(document(), mousemove, move |e| {
         set_x.set(e.client_x());
         set_y.set(e.client_y());
     });
@@ -85,6 +75,13 @@ fn App() -> impl IntoView {
     });
 
     let (clients, set_clients) = create_signal(HashMap::<u64, Position>::new());
+
+    let (tmp_line, set_tmp_line) = create_signal(Line {
+        points: Vec::new(),
+        width: 10.0,
+    });
+
+    let camera = create_rw_signal(Camera::new());
 
     let client = create_memo(move |_| match client.get() {
         Some(Some(client)) => {
@@ -129,37 +126,14 @@ fn App() -> impl IntoView {
         }
     });
 
-    let UseIntervalReturn { counter, .. } = use_interval(50);
-
-    create_effect(move |_| {
-        let Some(client) = client.get() else {
-            return;
-        };
-        let _ = counter.get();
-        let x = x.get_untracked();
-        let y = y.get_untracked();
-        client.send(ToServer::Move {
-            x: x as f32,
-            y: y as f32,
-        });
-    });
-
     view! {
         {move || {
             match client.get() {
                 Some(client) => {
                     view! {
-                        <Canvas client=client/>
-                        <For
-                            each=move || clients.get()
-                            key=move |(id, _)| id.clone()
-                            children=move |(id, _)| {
-                                let position = create_memo(move |_| {
-                                    clients.with(|clients| clients.get(&id).unwrap().to_owned())
-                                });
-                                view! { <Cursor name=format!("{}", id) position=position.into()/> }
-                            }
-                        />
+                        <Canvas tmp_line=tmp_line camera=camera.read_only()/>
+                        <Controls client=client.clone() camera=camera tmp_line=set_tmp_line/>
+                        <CursorBox clients=clients camera=camera.read_only()/>
                     }
                         .into()
                 }

@@ -14,4 +14,4 @@ reqwest = "0.12.5"
 serde = "1.0.203"
 serde_cbor = "0.11.2"
 wasm-bindgen-futures = "0.4.42"
-web-sys = { version = "0.3.69", features = [ "WebGl2RenderingContext", "HtmlCanvasElement", "WebGlBuffer", "WebGlVertexArrayObject", "WebGlProgram", "WebGlShader" ] }
+web-sys = { version = "0.3.69", features = [ "WebGl2RenderingContext", "HtmlCanvasElement", "WebGlBuffer", "WebGlVertexArrayObject", "WebGlProgram", "WebGlShader", "WebGlUniformLocation" ] }

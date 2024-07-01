@@ -6,6 +6,12 @@ pub mod entities {
         pub x: f32,
         pub y: f32,
     }
+
+    #[derive(Serialize, Deserialize, Clone, Debug)]
+    pub struct Line {
+        pub points: Vec<Position>,
+        pub width: f32,
+    }
 }
 
 pub mod api {

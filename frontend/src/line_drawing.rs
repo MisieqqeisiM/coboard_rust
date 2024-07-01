@@ -1,14 +1,14 @@
-use itertools::Itertools;
-use leptos::html::li;
 use std::f64::consts::{FRAC_PI_2, TAU};
 
-use nalgebra::{ComplexField, Matrix2, Point2, Rotation, Rotation2, Vector2};
+use nalgebra::{Point2, Rotation2, Vector2};
 
 type Point = Point2<f64>;
 type Vector = Vector2<f64>;
 
 pub fn line_into_triangle_strip(line: Vec<Point>, width: f64) -> Vec<Point> {
-    if let [a] = line[..] {
+    if let [] = line[..] {
+        Vec::new()
+    } else if let [a] = line[..] {
         circle(a, width)
     } else {
         let mut result = vec![cap(line[0], line[1], width)];
@@ -18,9 +18,9 @@ pub fn line_into_triangle_strip(line: Vec<Point>, width: f64) -> Vec<Point> {
             if i + 2 < line.len() {
                 result.push(elbow(line[i], line[i + 1], line[i + 2], width));
             }
-        }    
+        }
         result.push(cap(line[line.len() - 1], line[line.len() - 2], width));
-        
+
         result.into_iter().flat_map(|v| v).collect()
     }
 }
@@ -38,7 +38,7 @@ fn rectangle(from: Point, to: Point, width: f64) -> Vec<Point> {
 }
 
 const ANGLE_RES: f64 = 0.3;
-const MIN_ANGLE: f64 = 0.001;
+const MIN_ANGLE: f64 = 0.00001;
 
 fn cap(from: Point, to: Point, width: f64) -> Vec<Point> {
     let dir = (to - from).normalize();
@@ -64,14 +64,13 @@ fn circle(a: Point, width: f64) -> Vec<Point> {
     points
 }
 
-
 /// Constructs arc centered in `b` ranging from point `a` to `c` in counterclockwise direction
 fn arc(a: Point, b: Point, c: Point) -> Vec<Point> {
     let angle = ccw_angle(&(a - b), &(c - b));
-    if angle < MIN_ANGLE {
+    let segment_count = (angle / ANGLE_RES).ceil() as u32;
+    if segment_count == 0 {
         return vec![];
     }
-    let segment_count = (angle / ANGLE_RES).ceil() as u32;
     let rotation = Rotation2::new(angle / segment_count as f64);
     let mut points = vec![a, b];
     for _ in 0..(segment_count - 1) {
@@ -96,7 +95,7 @@ fn elbow(a: Point, b: Point, c: Point, width: f64) -> Vec<Point> {
 }
 
 /// Check if shortest rotation from `from` to `to` is counterclockwise
-fn ccw(from: &Vector, to: &Vector) -> bool { 
+fn ccw(from: &Vector, to: &Vector) -> bool {
     from.perp(to) > 0.0
 }
 
@@ -117,13 +116,15 @@ fn ccw_angle(from: &Vector, to: &Vector) -> f64 {
 #[cfg(test)]
 mod tests {
     mod ccw {
+        use crate::line_drawing::{ccw, Vector};
+
         #[test]
         fn acute_angle_vectors() {
             let from = Vector::new(-1.0, 2.0);
             let to = Vector::new(-2.0, 1.0);
 
-            assert!(ccw(from, to));
-            assert!(!ccw(to, from));
+            assert!(ccw(&from, &to));
+            assert!(!ccw(&to, &from));
         }
 
         #[test]
@@ -131,8 +132,8 @@ mod tests {
             let from = Vector::new(1.0, 0.0);
             let to = Vector::new(0.0, 1.0);
 
-            assert!(ccw(from, to));
-            assert!(!ccw(to, from));
+            assert!(ccw(&from, &to));
+            assert!(!ccw(&to, &from));
         }
 
         #[test]
@@ -140,8 +141,8 @@ mod tests {
             let from = Vector::new(3.0, 2.0);
             let to = Vector::new(-2.0, 0.0);
 
-            assert!(ccw(from, to));
-            assert!(!ccw(to, from));
+            assert!(ccw(&from, &to));
+            assert!(!ccw(&to, &from));
         }
     }
 }

@@ -29,7 +29,13 @@ impl Client {
         let url = res.text().await.ok()?;
         let (message, set_message) = create_signal(None);
         let (connected, set_connected) = create_signal(false);
-        let websocket = WebSocket::new(&url).ok()?;
+        let url = if url.starts_with("/") {
+            let protocol = if protocol == "https:" { "wss:" } else { "ws:" };
+            format!("{protocol}//{host}{url}")
+        } else {
+            url
+        };
+        let websocket = WebSocket::new(&url).unwrap();
         websocket.set_binary_type(BinaryType::Arraybuffer);
 
         let message_queue = Rc::new(RefCell::new(VecDeque::new()));
