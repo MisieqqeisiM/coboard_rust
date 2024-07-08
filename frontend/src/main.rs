@@ -4,21 +4,16 @@ mod client;
 mod line_drawing;
 mod webgl_utils;
 
-use std::collections::HashMap;
-
+use board::canvas::{CanvasControls, LineControls};
 use board::controls::Controls;
-use board::cursor::Cursor;
 use board::cursor_box::CursorBox;
 use board::{camera::Camera, canvas::Canvas};
 use client::*;
 use common::entities::Line;
-use common::{
-    entities::Position,
-    websocket::{ToClient, ToServer},
-};
-use ev::mousemove;
+use common::{entities::Position, websocket::ToClient};
 use leptos::*;
 use leptos_use::*;
+use std::collections::HashMap;
 
 #[component]
 fn LoadingSpinner(text: &'static str) -> impl IntoView {
@@ -36,14 +31,6 @@ fn LoadingSpinner(text: &'static str) -> impl IntoView {
 
 #[component]
 fn App() -> impl IntoView {
-    let (x, set_x) = create_signal(0);
-    let (y, set_y) = create_signal(0);
-
-    let _ = use_event_listener(document(), mousemove, move |e| {
-        set_x.set(e.client_x());
-        set_y.set(e.client_y());
-    });
-
     let client = create_local_resource(|| (), |_| Client::new());
 
     let messaged = create_memo(move |_| {
@@ -77,6 +64,7 @@ fn App() -> impl IntoView {
     let (clients, set_clients) = create_signal(HashMap::<u64, Position>::new());
 
     let (tmp_line, set_tmp_line) = create_signal(Line {
+        id: 0,
         points: Vec::new(),
         width: 10.0,
     });
@@ -131,7 +119,19 @@ fn App() -> impl IntoView {
             match client.get() {
                 Some(client) => {
                     view! {
-                        <Canvas tmp_line=tmp_line camera=camera.read_only()/>
+                        <Canvas controls=CanvasControls {
+                            camera: camera.read_only(),
+                            add_line: create_signal(Line {
+                                    id: 0,
+                                    points: vec![],
+                                    width: 30.0,
+                                })
+                                .0,
+                            tmp_line: LineControls {
+                                set: tmp_line,
+                                add: create_signal(Position { x: 0.0, y: 0.0 }).0,
+                            },
+                        }/>
                         <Controls client=client.clone() camera=camera tmp_line=set_tmp_line/>
                         <CursorBox clients=clients camera=camera.read_only()/>
                     }

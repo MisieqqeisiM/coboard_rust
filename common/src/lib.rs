@@ -9,6 +9,7 @@ pub mod entities {
 
     #[derive(Serialize, Deserialize, Clone, Debug)]
     pub struct Line {
+        pub id: i64,
         pub points: Vec<Position>,
         pub width: f32,
     }

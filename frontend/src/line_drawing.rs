@@ -1,11 +1,18 @@
-use std::f64::consts::{FRAC_PI_2, TAU};
-
+use common::entities::{Line, Position};
+use itertools::Itertools;
 use nalgebra::{Point2, Rotation2, Vector2};
+use std::f64::consts::{FRAC_PI_2, TAU};
 
 type Point = Point2<f64>;
 type Vector = Vector2<f64>;
 
-pub fn line_into_triangle_strip(line: Vec<Point>, width: f64) -> Vec<Point> {
+pub fn line_into_triangle_strip(line: &Line) -> Vec<Point> {
+    let width = line.width as f64;
+    let line = line
+        .points
+        .iter()
+        .map(|Position { x, y }| Point::new(x.to_owned() as f64, y.to_owned() as f64))
+        .collect_vec();
     if let [] = line[..] {
         Vec::new()
     } else if let [a] = line[..] {
@@ -21,7 +28,8 @@ pub fn line_into_triangle_strip(line: Vec<Point>, width: f64) -> Vec<Point> {
         }
         result.push(cap(line[line.len() - 1], line[line.len() - 2], width));
 
-        result.into_iter().flat_map(|v| v).collect()
+        let result = result.into_iter().flat_map(|v| v).collect_vec();
+        [&[result[0]], &result[..], &[result[result.len() - 1]]].concat()
     }
 }
 
@@ -38,7 +46,6 @@ fn rectangle(from: Point, to: Point, width: f64) -> Vec<Point> {
 }
 
 const ANGLE_RES: f64 = 0.3;
-const MIN_ANGLE: f64 = 0.00001;
 
 fn cap(from: Point, to: Point, width: f64) -> Vec<Point> {
     let dir = (to - from).normalize();

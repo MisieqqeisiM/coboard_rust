@@ -1,165 +1,163 @@
-use std::{borrow::Borrow, cell::RefCell, ops::Deref, rc::Rc};
-
+use super::camera::Camera;
+use crate::webgl_utils::{line_buffer::LineBuffer, program::Program, single_line::SingleLine};
 use common::entities::{Line, Position};
-use itertools::Itertools;
 use leptos::{
-    component, create_effect, create_node_ref, create_signal, document, ev::resize, logging::log,
-    store_value, svg::line, view, window, IntoView, ReadSignal, SignalGet, SignalGetUntracked,
-    SignalSet, SignalUpdate, SignalWith,
+    component, create_effect, create_node_ref, create_signal, ev::resize, store_value, view,
+    window, HtmlElement, IntoView, ReadSignal, SignalGet, SignalSet, SignalWith,
 };
 use leptos_use::use_event_listener;
-use nalgebra::Point2;
-use web_sys::{
-    js_sys, wasm_bindgen::JsCast, WebGl2RenderingContext, WebGlBuffer, WebGlProgram, WebGlShader,
-    WebGlVertexArrayObject,
-};
+use std::ops::Deref;
+use web_sys::{wasm_bindgen::JsCast, WebGl2RenderingContext};
 
-use crate::{line_drawing::line_into_triangle_strip, webgl_utils::program::Program, Client};
-
-use super::camera::Camera;
-
-struct LineBuffer {
-    vao: WebGlVertexArrayObject,
-    vbo: WebGlBuffer,
-    vertex_count: i32,
+#[derive(Clone)]
+pub struct LineControls {
+    pub set: ReadSignal<Line>,
+    pub add: ReadSignal<Position>,
 }
 
-impl LineBuffer {
-    fn new(context: &WebGl2RenderingContext) -> Self {
-        let vbo = context.create_buffer().unwrap();
-        let vao = context.create_vertex_array().unwrap();
-        context.bind_vertex_array(Some(&vao));
-        context.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&vbo));
-        context.vertex_attrib_pointer_with_i32(0, 2, WebGl2RenderingContext::FLOAT, false, 0, 0);
-        context.enable_vertex_attrib_array(0);
-        Self {
-            vao,
-            vbo,
-            vertex_count: 0,
-        }
-    }
-
-    fn draw(&self, context: &WebGl2RenderingContext) {
-        context.bind_vertex_array(Some(&self.vao));
-        context.draw_arrays(WebGl2RenderingContext::TRIANGLE_STRIP, 0, self.vertex_count);
-    }
-
-    fn set_line(&mut self, context: &WebGl2RenderingContext, line: &Line) {
-        let vertices = line_into_triangle_strip(
-            line.points
-                .iter()
-                .map(|Position { x, y }| Point2::new(x.to_owned() as f64, y.to_owned() as f64))
-                .collect(),
-            line.width as f64,
-        )
-        .into_iter()
-        .flat_map(|p| [p.x as f32, p.y as f32])
-        .collect_vec();
-
-        context.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.vbo));
-        unsafe {
-            let positions_array_buf_view = js_sys::Float32Array::view(&vertices);
-            context.buffer_data_with_array_buffer_view(
-                WebGl2RenderingContext::ARRAY_BUFFER,
-                &positions_array_buf_view,
-                WebGl2RenderingContext::STATIC_DRAW,
-            );
-        }
-        context.vertex_attrib_pointer_with_i32(0, 2, WebGl2RenderingContext::FLOAT, false, 0, 0);
-        context.enable_vertex_attrib_array(0);
-        self.vertex_count = (vertices.len() / 2) as i32;
-    }
+#[derive(Clone)]
+pub struct CanvasControls {
+    pub camera: ReadSignal<Camera>,
+    pub tmp_line: LineControls,
+    pub add_line: ReadSignal<Line>,
 }
 
 #[component]
-pub fn Canvas(tmp_line: ReadSignal<Line>, camera: ReadSignal<Camera>) -> impl IntoView {
+pub fn Canvas(controls: CanvasControls) -> impl IntoView {
+    let (canvas_context, set_canvas_context) = create_signal::<Option<CanvasContext>>(None);
     let canvas = create_node_ref::<leptos::html::Canvas>();
-    let (context, set_context) = create_signal::<Option<WebGl2RenderingContext>>(None);
-    let line_buffer = store_value::<Option<LineBuffer>>(None);
-    let (program, set_program) = create_signal::<Option<Program>>(None);
-
-    let draw = move || {
-        let Some(context) = context.get_untracked() else {
-            return;
-        };
-        context.clear_color(1.0, 1.0, 1.0, 1.0);
-        context.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
-        line_buffer.with_value(|line_buffer| {
-            line_buffer
-                .as_ref()
-                .map(|line_buffer| line_buffer.draw(&context));
-        });
-    };
-
-    let resize_canvas = move || {
-        let Some(canvas) = canvas.get_untracked() else {
-            return;
-        };
-        let Some(context) = context.get_untracked() else {
-            return;
-        };
-        let Some(program) = program.get_untracked() else {
-            return;
-        };
-
-        let width = canvas.client_width();
-        let height = canvas.client_height();
-        program.set_resolution(&context, width as u32, height as u32);
-        canvas.set_width(width as u32);
-        canvas.set_height(height as u32);
-        context.viewport(0, 0, width, height);
-    };
 
     create_effect(move |_| {
         let Some(canvas) = canvas.get() else {
             return;
         };
-        let canvas = canvas.deref();
-        let context = canvas
+        let gl = canvas
+            .deref()
             .get_context("webgl2")
             .unwrap()
             .unwrap()
             .dyn_into::<WebGl2RenderingContext>()
             .unwrap();
-        let program = Program::new(&context).unwrap();
-        program.use_program(&context);
+        let program = Program::new(&gl).unwrap();
+        program.use_program(&gl);
 
-        line_buffer.set_value(Some(LineBuffer::new(&context)));
-        set_program.set(Some(program));
-        set_context.set(Some(context));
+        let tmp_line = SingleLine::new(&gl);
+        let lines = LineBuffer::new(&gl);
 
-        resize_canvas();
-        draw();
+        let ctx = CanvasContext {
+            gl,
+            program,
+            canvas,
+            tmp_line,
+            lines,
+        };
+
+        ctx.fix_resolution();
+
+        set_canvas_context.set(Some(ctx));
+    });
+
+    let behavior = move || {
+        canvas_context.with(|ctx| {
+            if let Some(ctx) = ctx {
+                view! { <CanvasBehavior ctx=ctx.clone() controls=controls.clone()/> }
+            } else {
+                ().into_view()
+            }
+        })
+    };
+
+    view! {
+        {behavior}
+
+        <canvas _ref=canvas width=500 height=500></canvas>
+    }
+}
+
+#[derive(Clone)]
+struct CanvasContext {
+    gl: WebGl2RenderingContext,
+    tmp_line: SingleLine,
+    lines: LineBuffer,
+    program: Program,
+    canvas: HtmlElement<leptos::html::Canvas>,
+}
+
+impl CanvasContext {
+    fn draw(&self) {
+        self.gl.clear_color(1.0, 1.0, 1.0, 1.0);
+        self.gl.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
+        self.lines.draw(&self.gl);
+        self.tmp_line.draw(&self.gl);
+    }
+
+    fn fix_resolution(&self) {
+        let width = self.canvas.client_width();
+        let height = self.canvas.client_height();
+        self.program
+            .set_resolution(&self.gl, width as u32, height as u32);
+        self.canvas.set_width(width as u32);
+        self.canvas.set_height(height as u32);
+        self.gl.viewport(0, 0, width, height);
+    }
+
+    fn set_camera(&self, camera: Camera) {
+        self.program.set_camera(&self.gl, camera);
+    }
+
+    fn add_line(&mut self, line: Line) {
+        self.lines.add_line(&self.gl, &line);
+    }
+
+    fn set_tmp_line(&mut self, line: Line) {
+        self.tmp_line.set_line(&self.gl, line);
+    }
+
+    fn grow_tmp_line(&mut self, point: Position) {
+        self.tmp_line.add_point(&self.gl, point);
+    }
+}
+
+#[component]
+fn CanvasBehavior(ctx: CanvasContext, controls: CanvasControls) -> impl IntoView {
+    let ctx = store_value(ctx);
+
+    create_effect(move |_| {
+        let line = controls.tmp_line.set.get();
+        ctx.update_value(move |ctx| {
+            ctx.set_tmp_line(line);
+            ctx.draw();
+        });
     });
 
     create_effect(move |_| {
-        let Some(context) = context.get() else {
-            return;
-        };
-        let line = tmp_line.get();
-        line_buffer.update_value(move |line_buffer| {
-            line_buffer
-                .as_mut()
-                .map(|line_buffer| line_buffer.set_line(&context, &line));
+        let point = controls.tmp_line.add.get();
+        ctx.update_value(move |ctx| {
+            ctx.grow_tmp_line(point);
+            ctx.draw();
         });
-        draw();
+    });
+
+    create_effect(move |_| {
+        let line = controls.add_line.get();
+        ctx.update_value(move |ctx| {
+            ctx.add_line(line);
+            ctx.draw();
+        });
+    });
+
+    create_effect(move |_| {
+        let camera = controls.camera.get();
+        ctx.update_value(move |ctx| {
+            ctx.set_camera(camera);
+            ctx.draw();
+        });
     });
 
     let _ = use_event_listener(window(), resize, move |_| {
-        resize_canvas();
-        draw();
+        ctx.update_value(move |ctx| {
+            ctx.fix_resolution();
+            ctx.draw();
+        });
     });
-
-    create_effect(move |_| {
-        let Some(context) = context.get_untracked() else {
-            return;
-        };
-        let Some(program) = program.get_untracked() else {
-            return;
-        };
-        program.set_camera(&context, camera.get());
-        draw();
-    });
-
-    view! { <canvas _ref=canvas width=500 height=500></canvas> }
 }

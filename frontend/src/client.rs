@@ -1,7 +1,6 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
-
 use common::websocket::{ToClient, ToServer};
-use leptos::{create_signal, logging::log, window, ReadSignal, SignalGet, SignalSet};
+use leptos::{create_signal, window, ReadSignal, SignalGet, SignalSet};
 use reqwest::StatusCode;
 use web_sys::{js_sys::{ArrayBuffer, Uint8Array}, wasm_bindgen::{closure::Closure, JsCast}, BinaryType, Event, MessageEvent, WebSocket};
 
