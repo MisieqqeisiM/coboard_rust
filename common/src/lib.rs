@@ -27,11 +27,12 @@ pub mod api {
 pub mod websocket {
     use serde::{Deserialize, Serialize};
 
-    use crate::entities::Position;
+    use crate::entities::{Line, Position};
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum ToServer {
         Move { x: f32, y: f32 },
+        DrawLine { line: Line },
     }
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -40,5 +41,7 @@ pub mod websocket {
         NewClient { id: u64 },
         ClientMoved { id: u64, x: f32, y: f32 },
         ClientDisconnected { id: u64 },
+        NewLine { line: Line },
+        ConfirmLine,
     }
 }

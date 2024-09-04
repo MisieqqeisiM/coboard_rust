@@ -1,9 +1,7 @@
 use std::{collections::HashMap, pin::Pin};
-
 use common::{entities::Position, websocket::{ToClient, ToServer}};
 use futures_util::Future;
 use tracing::info;
-
 use crate::socket_endpoint::{Client, SocketHandler};
 
 type AsyncFnOnce = Box<dyn (FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send>>) + Send>;
@@ -46,9 +44,23 @@ impl SocketHandler for Board {
 
   async fn on_message(&mut self, client_id: u64, message: ToServer) {
     match message {
+
       ToServer::Move { x, y } => {
         self.positions.insert(client_id, Position { x, y } );
         self.broadcast(ToClient::ClientMoved { id: client_id, x, y } ).await;
+      }
+
+      ToServer::DrawLine { line } => {
+        let message = ToClient::NewLine { line };
+        self.broadcast(message).await;
+        // TODO: implement ConfirmLine
+        // for client in self.clients.values_mut() {
+        //   if client.get_id() == client_id {
+        //     client.send(ToClient::ConfirmLine).await;
+        //   } else {
+        //     client.send(message.clone()).await;
+        //   }
+        // }
       }
     };
   }

@@ -4,9 +4,10 @@ mod client;
 mod line_drawing;
 mod webgl_utils;
 
-use board::canvas::{CanvasControls, LineControls};
+use board::canvas::CanvasControls;
 use board::controls::Controls;
 use board::cursor_box::CursorBox;
+use board::observable_line::LineSignal;
 use board::{camera::Camera, canvas::Canvas};
 use client::*;
 use common::entities::Line;
@@ -63,7 +64,7 @@ fn App() -> impl IntoView {
 
     let (clients, set_clients) = create_signal(HashMap::<u64, Position>::new());
 
-    let (tmp_line, set_tmp_line) = create_signal(Line {
+    let tmp_line = LineSignal::new(Line {
         id: 0,
         points: Vec::new(),
         width: 10.0,
@@ -80,6 +81,12 @@ fn App() -> impl IntoView {
             }
         }
         _ => None,
+    });
+
+    let (add_line, set_add_line) = create_signal(Line {
+        id: 0,
+        points: vec![],
+        width: 0.0,
     });
 
     create_effect(move |_| {
@@ -111,9 +118,14 @@ fn App() -> impl IntoView {
                     clients_map.insert(id, pos);
                 }
             }),
+            ToClient::NewLine { line } => {
+                set_add_line.set(line);
+            }
+            ToClient::ConfirmLine => {
+                // TODO: move temporary line to top
+            }
         }
     });
-
     view! {
         {move || {
             match client.get() {
@@ -121,18 +133,10 @@ fn App() -> impl IntoView {
                     view! {
                         <Canvas controls=CanvasControls {
                             camera: camera.read_only(),
-                            add_line: create_signal(Line {
-                                    id: 0,
-                                    points: vec![],
-                                    width: 30.0,
-                                })
-                                .0,
-                            tmp_line: LineControls {
-                                set: tmp_line,
-                                add: create_signal(Position { x: 0.0, y: 0.0 }).0,
-                            },
+                            add_line,
+                            tmp_line: tmp_line.read_only(),
                         }/>
-                        <Controls client=client.clone() camera=camera tmp_line=set_tmp_line/>
+                        <Controls client=client.clone() camera=camera tmp_line=tmp_line.clone()/>
                         <CursorBox clients=clients camera=camera.read_only()/>
                     }
                         .into()

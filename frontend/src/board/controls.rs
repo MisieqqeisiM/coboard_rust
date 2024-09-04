@@ -11,13 +11,14 @@ use leptos_use::{
 
 use crate::{board::camera::Camera, Client};
 
+use super::observable_line::LineSignal;
+
+// TODO: touchscreen controls
+
 #[component]
-pub fn Controls(
-    client: Client,
-    camera: RwSignal<Camera>,
-    tmp_line: WriteSignal<Line>,
-) -> impl IntoView {
+pub fn Controls(client: Client, camera: RwSignal<Camera>, tmp_line: LineSignal) -> impl IntoView {
     let div = create_node_ref();
+    let client = store_value(client);
 
     let (mouse_pos, set_mouse_pos) = create_signal((0, 0));
 
@@ -31,7 +32,7 @@ pub fn Controls(
             let (x, y) = camera
                 .get_untracked()
                 .to_board_coords(e.client_x() as f32, e.client_y() as f32);
-            tmp_line.update(|line| line.points.push(Position { x, y }));
+            tmp_line.grow(Position { x, y });
         }
         if e.buttons() & 4 != 0 {
             camera.update(|camera| {
@@ -44,13 +45,25 @@ pub fn Controls(
         set_mouse_pos.set((e.client_x(), e.client_y()));
     });
 
+    let _ = use_event_listener(div, mouseup, move |e| {
+        let line = tmp_line.get_untracked();
+        if line.points.len() != 0 {
+            client.get_value().send(ToServer::DrawLine { line });
+            tmp_line.set(Line {
+                id: 0,
+                points: vec![],
+                width: 10.0,
+            });
+        }
+    });
+
     let UseIntervalReturn { counter, .. } = use_interval(50);
 
     create_effect(move |_| {
         let _ = counter.get();
         let (x, y) = mouse_pos.get_untracked();
         let (x, y) = camera.get_untracked().to_board_coords(x as f32, y as f32);
-        client.send(ToServer::Move {
+        client.get_value().send(ToServer::Move {
             x: x as f32,
             y: y as f32,
         });

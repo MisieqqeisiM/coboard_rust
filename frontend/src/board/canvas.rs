@@ -1,4 +1,4 @@
-use super::camera::Camera;
+use super::{camera::Camera, observable_line::LineReadSignal};
 use crate::webgl_utils::{line_buffer::LineBuffer, program::Program, single_line::SingleLine};
 use common::entities::{Line, Position};
 use leptos::{
@@ -10,15 +10,9 @@ use std::ops::Deref;
 use web_sys::{wasm_bindgen::JsCast, WebGl2RenderingContext};
 
 #[derive(Clone)]
-pub struct LineControls {
-    pub set: ReadSignal<Line>,
-    pub add: ReadSignal<Position>,
-}
-
-#[derive(Clone)]
 pub struct CanvasControls {
     pub camera: ReadSignal<Camera>,
-    pub tmp_line: LineControls,
+    pub tmp_line: LineReadSignal,
     pub add_line: ReadSignal<Line>,
 }
 
@@ -57,18 +51,17 @@ pub fn Canvas(controls: CanvasControls) -> impl IntoView {
         set_canvas_context.set(Some(ctx));
     });
 
-    let behavior = move || {
-        canvas_context.with(|ctx| {
-            if let Some(ctx) = ctx {
-                view! { <CanvasBehavior ctx=ctx.clone() controls=controls.clone()/> }
-            } else {
-                ().into_view()
-            }
-        })
-    };
-
     view! {
-        {behavior}
+        {move || {
+            canvas_context
+                .with(|ctx| {
+                    if let Some(ctx) = ctx {
+                        view! { <CanvasBehavior ctx=ctx.clone() controls=controls.clone()/> }
+                    } else {
+                        ().into_view()
+                    }
+                })
+        }}
 
         <canvas _ref=canvas width=500 height=500></canvas>
     }
@@ -131,7 +124,7 @@ fn CanvasBehavior(ctx: CanvasContext, controls: CanvasControls) -> impl IntoView
     });
 
     create_effect(move |_| {
-        let point = controls.tmp_line.add.get();
+        let point = controls.tmp_line.grow.get();
         ctx.update_value(move |ctx| {
             ctx.grow_tmp_line(point);
             ctx.draw();
