@@ -57,11 +57,11 @@ fn App() -> impl IntoView {
     let client = create_local_resource(|| (), |_| Client::new());
 
     let messaged = create_memo(move |_| {
-        if let Some(Some(client)) = client.get() {
+        match client.get() { Some(Some(client)) => {
             client.message().is_some()
-        } else {
+        } _ => {
             false
-        }
+        }}
     });
 
     let check_connection = {

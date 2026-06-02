@@ -18,9 +18,9 @@ pub fn line_into_triangle_strip(line: Vec<Point>, width: f64) -> Vec<Point> {
             if i + 2 < line.len() {
                 result.push(elbow(line[i], line[i + 1], line[i + 2], width));
             }
-        }    
+        }
         result.push(cap(line[line.len() - 1], line[line.len() - 2], width));
-        
+
         result.into_iter().flat_map(|v| v).collect()
     }
 }
@@ -64,7 +64,6 @@ fn circle(a: Point, width: f64) -> Vec<Point> {
     points
 }
 
-
 /// Constructs arc centered in `b` ranging from point `a` to `c` in counterclockwise direction
 fn arc(a: Point, b: Point, c: Point) -> Vec<Point> {
     let angle = ccw_angle(&(a - b), &(c - b));
@@ -96,7 +95,7 @@ fn elbow(a: Point, b: Point, c: Point, width: f64) -> Vec<Point> {
 }
 
 /// Check if shortest rotation from `from` to `to` is counterclockwise
-fn ccw(from: &Vector, to: &Vector) -> bool { 
+fn ccw(from: &Vector, to: &Vector) -> bool {
     from.perp(to) > 0.0
 }
 
@@ -117,13 +116,15 @@ fn ccw_angle(from: &Vector, to: &Vector) -> f64 {
 #[cfg(test)]
 mod tests {
     mod ccw {
+        use crate::line_drawing::{ccw, Vector};
+
         #[test]
         fn acute_angle_vectors() {
             let from = Vector::new(-1.0, 2.0);
             let to = Vector::new(-2.0, 1.0);
 
-            assert!(ccw(from, to));
-            assert!(!ccw(to, from));
+            assert!(ccw(&from, &to));
+            assert!(!ccw(&to, &from));
         }
 
         #[test]
@@ -131,8 +132,8 @@ mod tests {
             let from = Vector::new(1.0, 0.0);
             let to = Vector::new(0.0, 1.0);
 
-            assert!(ccw(from, to));
-            assert!(!ccw(to, from));
+            assert!(ccw(&from, &to));
+            assert!(!ccw(&to, &from));
         }
 
         #[test]
@@ -140,8 +141,8 @@ mod tests {
             let from = Vector::new(3.0, 2.0);
             let to = Vector::new(-2.0, 0.0);
 
-            assert!(ccw(from, to));
-            assert!(!ccw(to, from));
+            assert!(ccw(&from, &to));
+            assert!(!ccw(&to, &from));
         }
     }
 }
